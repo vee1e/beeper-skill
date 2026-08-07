@@ -1,6 +1,6 @@
 # beeper-skill
 
-An opencode skill for reading, searching, and sending messages through Beeper Desktop.
+An agent skill for reading, searching, and sending messages through Beeper Desktop.
 
 Beeper Desktop connects WhatsApp, Instagram, Signal, X, Google Chat, Matrix, and more. Everything runs locally on your machine.
 
