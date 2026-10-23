@@ -48,7 +48,7 @@ All commands accept a full chat ID, e.g.
 | `beeper.py chats search QUERY [--type single\|group]` | Find chats by name; shows participants and networks |
 | `beeper.py chats list [--limit N]` | Recent chats across all accounts |
 | `beeper.py messages CHAT_ID [--limit N] [--after-cursor C]` | Read a chat's message history (chronological) |
-| `beeper.py send CHAT_ID "text"` | Send a plain-text message |
+| `beeper.py send CHAT_ID "text" [--file PATH] [--mime TYPE] [--filename NAME]` | Send text, file, or both. File uploads first via `/v1/assets/upload`, then sends with `{"attachment": {"uploadID": ...}}` |
 | `beeper.py search QUERY [--limit N]` | Search messages globally |
 
 `messages` returns a pagination cursor (`oldestCursor`) when `hasMore` is true;
@@ -66,7 +66,7 @@ The API surface is small and stable. Always send `Authorization: Bearer <token>`
 | GET | `/v1/chats/search?query=...&type=single&limit=20` | Search chats |
 | GET | `/v1/chats?limit=20` | List chats |
 | GET | `/v1/chats/{chatID}/messages?limit=20[&cursor=...]` | Read messages (paginate with `oldestCursor`) |
-| POST | `/v1/chats/{chatID}/messages` body `{"text": "..."}` | Send a message |
+| POST | `/v1/chats/{chatID}/messages` body `{"text": "...", "attachment": {"uploadID": "..."}}` | Send text with optional single file attachment (upload first) |
 | GET | `/v1/messages/search?query=...` | Search messages |
 | POST | `/v1/chats/{chatID}/read` | Mark chat read |
 | POST | `/v1/chats/{chatID}/unread` | Mark chat unread |
@@ -83,8 +83,14 @@ The API surface is small and stable. Always send `Authorization: Bearer <token>`
 ### Send a message to a contact or group
 1. `beeper.py chats search "<name>"` and pick the right chat (prefer the
    direct/single chat over a group unless the user says group).
-2. `beeper.py send "<chat id>" "the message"` — response includes a
+2. Text only: `beeper.py send "<chat id>" "the message"` — response includes a
    `pendingMessageID`; HTTP 200 means accepted.
+3. With a file: `beeper.py send "<chat id>" "caption" --file /path/to.zip`
+   — uploads via `POST /v1/assets/upload` (multipart `file` field), then sends
+   with `{"attachment": {"uploadID": "..."}}`. Field name is singular
+   `attachment`, not `attachments` or top-level `uploadID`. Verify with
+   `GET /v1/chats/{chatID}/messages/{pendingMessageID}` and expect
+   `type: FILE` plus `attachments[0].fileName`.
 
 ### Summarize a chat
 1. Find the chat id (`chats search`).

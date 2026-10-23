@@ -64,6 +64,40 @@ def quote_chat_id(chat_id):
     return urllib.parse.quote(chat_id, safe="")
 
 
+def upload_file(base, token, path, mime=None, timeout=60):
+    import uuid
+    from pathlib import Path as _P
+    p = _P(path).expanduser()
+    data = p.read_bytes()
+    boundary = "----" + uuid.uuid4().hex
+    body = (
+        f"--{boundary}\r\n".encode()
+        + f'Content-Disposition: form-data; name="file"; filename="{p.name}"\r\n'.encode()
+        + f"Content-Type: {mime or 'application/octet-stream'}\r\n\r\n".encode()
+        + data
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+    url = f"{base}/v1/assets/upload"
+    req = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            obj = json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        sys.exit(f"upload failed HTTP {e.code}: {e.read().decode(errors='replace')[:500]}")
+    upload_id = (obj or {}).get("uploadID")
+    if not upload_id:
+        sys.exit(f"upload failed, no uploadID: {obj}")
+    print(f"uploaded {p.name} ({len(data)} bytes) uploadID={upload_id}")
+    return upload_id
+
+
 def cmd_info(base, token, args):
     code, data = api(base, token, "GET", "/v1/info")
     print(f"HTTP {code}")
@@ -122,9 +156,27 @@ def cmd_messages(base, token, args):
 
 
 def cmd_send(base, token, args):
+    body = {}
+    if args.text:
+        body["text"] = args.text
+    if args.file:
+        import mimetypes
+        from pathlib import Path as _P
+        p = _P(args.file).expanduser()
+        if not p.exists():
+            sys.exit(f"error: file not found: {p}")
+        mime = args.mime or mimetypes.guess_type(str(p))[0] or "application/octet-stream"
+        upload_id = upload_file(base, token, str(p), mime)
+        body["attachment"] = {"uploadID": upload_id}
+        if args.filename:
+            body["attachment"]["fileName"] = args.filename
+        if mime:
+            body["attachment"]["mimeType"] = mime
+    if not body:
+        sys.exit("error: provide text and/or --file")
     code, data = api(base, token, "POST",
                      f"/v1/chats/{quote_chat_id(args.chat_id)}/messages",
-                     body={"text": args.text})
+                     body=body)
     print(f"HTTP {code}")
     if data:
         print(pretty(data))
@@ -169,7 +221,10 @@ def main():
 
     ps2 = sub.add_parser("send")
     ps2.add_argument("chat_id")
-    ps2.add_argument("text")
+    ps2.add_argument("text", nargs="?", default="")
+    ps2.add_argument("--file", help="Path to file to attach (uploads then sends with attachment.uploadID)")
+    ps2.add_argument("--mime", help="Override MIME type for --file")
+    ps2.add_argument("--filename", help="Override filename for --file")
     ps2.set_defaults(fn=cmd_send)
 
     pg = sub.add_parser("search")
